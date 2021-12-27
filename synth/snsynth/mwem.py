@@ -246,10 +246,10 @@ class MWEMSynthesizer(SDGYMBaseSynthesizer):
                     hist, synth_hist, queries, ((self.epsilon / (2 * self.iterations)) / len(self.histograms))
                 )
                 # Make sure we get a different query to measure:
-                while qi in measurements:
-                    qi = self._exponential_mechanism(
-                        hist, synth_hist, queries, ((self.epsilon / (2 * self.iterations)) / len(self.histograms))
-                    )
+                # while qi in measurements:
+                #     qi = self._exponential_mechanism(
+                #         hist, synth_hist, queries, ((self.epsilon / (2 * self.iterations)) / len(self.histograms))
+                #     )
                 # NOTE: Add laplace noise here with budget
                 evals = self._evaluate(queries[qi], hist)
                 lap = self._laplace(
