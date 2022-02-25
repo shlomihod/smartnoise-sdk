@@ -24,6 +24,8 @@ synth_default_params = MWEMSynthesizer()
 
 faux_synth = MWEMSynthesizer(3., split_factor=1)
 
+single_query_synth = MWEMSynthesizer(3., split_factor=3, q_count=1)
+
 test_data = np.array([[1,1,1],[2,2,2],[3,3,3]])
 
 test_histogram = [[[1., 0., 0.],
@@ -119,3 +121,9 @@ class TestMWEM:
     def test_faux_fit(self):
         pytest.warns(Warning, faux_synth.fit, test_data)
         assert faux_synth.histograms
+
+    def test_single_query(self):
+        single_query_synth.fit(nf)
+        assert synth.histograms
+
+
