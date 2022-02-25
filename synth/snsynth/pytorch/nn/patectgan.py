@@ -8,6 +8,9 @@ from torch.nn import BatchNorm1d, Dropout, LeakyReLU, Linear, Module, ReLU, Sequ
 from torch.autograd import Variable
 import warnings
 
+import tempfile
+import wandb
+
 from .data_sampler import DataSampler
 from ctgan.data_transformer import DataTransformer
 from ctgan.synthesizers import CTGANSynthesizer
@@ -123,7 +126,8 @@ class PATECTGAN(CTGANSynthesizer):
                  delta=None,
                  noise_multiplier=1e-3,
                  moments_order=100,
-                 category_epsilon_pct=0.1
+                 category_epsilon_pct=0.1,
+                 with_wandb=False
                  ):
 
         assert batch_size % 2 == 0
@@ -176,6 +180,15 @@ class PATECTGAN(CTGANSynthesizer):
                 "log_frequency is selected.  This may result in oversampling frequent "
                 "categories, which could cause privacy leaks."
             )
+
+
+        self._with_wandb = with_wandb
+        self._run_log_dir = tempfile.TemporaryDirectory()
+
+
+    def __del__(self):
+        self._run_log_dir.cleanup()  # not sure if it is necessary
+
 
     def train(self, data, categorical_columns=None, ordinal_columns=None, update_epsilon=None):
         if update_epsilon:
@@ -269,6 +282,12 @@ class PATECTGAN(CTGANSynthesizer):
         for i in range(self.num_teachers):
             teacher_disc[i].apply(weights_init)
 
+        if self._with_wandb:
+            wandb.watch(self._generator)
+            wandb.watch(student_disc)
+            for disc in teacher_disc:
+                wandb.watch(disc)
+        
         optimizerG = optim.Adam(
             self._generator.parameters(),
             lr=self._generator_lr,
@@ -501,6 +520,13 @@ class PATECTGAN(CTGANSynthesizer):
                         eps, loss_g.detach().cpu(), loss_s.detach().cpu()
                     )
                 )
+            if self._with_wandb:
+                wandb.log({"eps": eps, "loss_g": loss_g.detach().cpu(), "loss_s": loss_s.detach().cpu()})
+                torch.save(self._generator.state_dict(), f"{self._run_log_dir.name}/generator-{iteration:04d}.pth")
+
+        if self._with_wandb:
+            wandb.save(f"{self._run_log_dir.name}/*")
+
 
     def w_loss(self, output, labels):
         vals = torch.cat([labels[None, :], output[None, :]], axis=1)

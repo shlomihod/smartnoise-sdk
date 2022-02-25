@@ -6,6 +6,9 @@ import torch.utils.data
 from torch.nn import BatchNorm1d, Dropout, LeakyReLU, Linear, Module, ReLU, Sequential, Sigmoid
 import warnings
 
+import tempfile
+import wandb
+
 import opacus
 
 from snsynth.preprocessors.data_transformer import DataTransformer
@@ -132,7 +135,9 @@ class DPCTGAN(CTGANSynthesizer):
                  epsilon=1,
                  preprocessor_eps=0.1,
                  loss="cross_entropy",
-                 category_epsilon_pct=0.1):
+                 category_epsilon_pct=0.1,
+                 with_wandb=False,
+                 secure_rng=False):
 
         assert batch_size % 2 == 0
 
@@ -193,6 +198,15 @@ class DPCTGAN(CTGANSynthesizer):
                 "log_frequency is selected.  This may result in oversampling frequent "
                 "categories, which could cause privacy leaks."
             )
+        
+        self._run_log_dir = tempfile.TemporaryDirectory()
+        self._with_wandb = with_wandb
+        
+        self._secure_rng = secure_rng
+
+    def __del__(self):
+        self._run_log_dir.cleanup()  # not sure if it is necessary
+
 
     def train(self, data, categorical_columns=None, ordinal_columns=None, update_epsilon=None):
         if update_epsilon:
@@ -254,6 +268,10 @@ class DPCTGAN(CTGANSynthesizer):
             self.pac
         ).to(self._device)
 
+        if self._with_wandb:
+            wandb.watch(self._generator)
+            wandb.watch(discriminator)
+
         optimizerG = optim.Adam(
             self._generator.parameters(),
             lr=self._generator_lr,
@@ -275,6 +293,7 @@ class DPCTGAN(CTGANSynthesizer):
             noise_multiplier=self.sigma,
             max_grad_norm=self.max_per_sample_grad_norm,
             clip_per_layer=True,
+            secure_rng=self._secure_rng
         )
 
         if not self.disabled_dp:
@@ -458,6 +477,13 @@ class DPCTGAN(CTGANSynthesizer):
                     flush=True,
                 )
                 print("epsilon is {e}, alpha is {a}".format(e=epsilon, a=best_alpha))
+
+            if self._with_wandb:
+                wandb.log({"eps": epsilon, "loss_g": loss_g.detach().cpu(), "loss_d": loss_d.detach().cpu(), "alpha": best_alpha})
+                torch.save(self._generator.state_dict(), f"{self._run_log_dir.name}/generator-{i+1:04d}.pth")
+
+        if self._with_wandb:
+            wandb.save(f"{self._run_log_dir.name}/*")
 
         return self.loss_d_list, self.loss_g_list, self.epsilon_list, self.alpha_list
 
