@@ -22,6 +22,7 @@ class MWEMSynthesizer(SDGYMBaseSynthesizer):
         split_factor=None,
         max_bin_count=500,
         custom_bin_count={},
+        max_retries_exp_mechanism=1000
     ):
         """
          N-Dimensional numpy implementation of MWEM.
@@ -96,7 +97,7 @@ class MWEMSynthesizer(SDGYMBaseSynthesizer):
 
         # Query trackers
         self.q_values = None
-        self.max_retries_exp_mechanism = 50
+        self.max_retries_exp_mechanism = max_retries_exp_mechanism
 
     @wraps(SDGYMBaseSynthesizer.fit)
     def fit(self, data, categorical_columns=None, ordinal_columns=None):
