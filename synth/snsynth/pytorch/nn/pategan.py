@@ -13,6 +13,7 @@ from ._discriminator import Discriminator
 from .privacy_utils import weights_init, pate, moments_acc
 
 
+
 class PATEGAN:
     def __init__(
         self,
@@ -22,7 +23,13 @@ class PATEGAN:
         latent_dim=64,
         batch_size=64,
         teacher_iters=5,
-        student_iters=5
+        student_iters=5,
+        generator_lr=2e-4,
+        generator_decay=1e-6,
+        discriminator_lr=2e-4,
+        discriminator_decay=1e-6,
+        noise_multiplier=1e-3,
+        verbose=False
     ):
         self.epsilon = epsilon
         self.delta = delta
@@ -31,7 +38,14 @@ class PATEGAN:
         self.batch_size = batch_size
         self.teacher_iters = teacher_iters
         self.student_iters = student_iters
+        self._generator_lr = generator_lr
+        self._generator_decay = generator_decay
+        self._discriminator_lr = discriminator_lr
+        self._discriminator_decay = discriminator_decay
+        self._noise_multiplier = noise_multiplier
+        self.verbose = verbose
 
+        
         self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
         self.pd_cols = None
@@ -80,15 +94,25 @@ class PATEGAN:
         for i in range(self.num_teachers):
             teacher_disc[i].apply(weights_init)
 
-        optimizer_g = optim.Adam(self.generator.parameters(), lr=1e-4)
-        optimizer_s = optim.Adam(student_disc.parameters(), lr=1e-4)
+            
+        optimizer_g = optim.Adam(
+            self.generator.parameters(),
+            lr=self._generator_lr,
+            weight_decay=self._generator_decay
+        )
+
+        optimizer_s = optim.Adam(student_disc.parameters(), lr=2e-4)
         optimizer_t = [
-            optim.Adam(teacher_disc[i].parameters(), lr=1e-4) for i in range(self.num_teachers)
+            optim.Adam(
+                teacher_disc[i].parameters(), lr=self._discriminator_lr,
+                weight_decay=self._discriminator_decay
+            )
+            for i in range(self.num_teachers)
         ]
 
         criterion = nn.BCELoss()
-
-        noise_multiplier = 1e-3
+        
+        noise_multiplier = self._noise_multiplier
         alphas = torch.tensor([0.0 for i in range(100)])
         l_list = 1 + torch.tensor(range(100))
         eps = torch.zeros(1)
@@ -163,6 +187,13 @@ class PATEGAN:
             optimizer_g.zero_grad()
             loss_g.backward()
             optimizer_g.step()
+            
+            if self.verbose:
+                print(
+                    "eps: {:f} \t G: {:f} \t D: {:f}".format(
+                        eps, loss_g.detach().cpu(), loss_s.detach().cpu()
+                    )
+                )
 
     def generate(self, n):
         steps = n // self.batch_size + 1

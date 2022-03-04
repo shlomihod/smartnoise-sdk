@@ -12,10 +12,12 @@ from opacus import PrivacyEngine
 from ._generator import Generator
 from ._discriminator import Discriminator
 
-
+        
 class DPGAN:
     def __init__(
-        self, binary=False, latent_dim=64, batch_size=64, epochs=1000, delta=None, epsilon=1.0
+        self, binary=False, latent_dim=64, batch_size=64, epochs=1000, delta=None, epsilon=1.0,
+        discriminator_lr=4e-4, discriminator_decay=0, generator_lr=1e-4, generator_decay=0,
+        sigma=3.5, max_per_sample_grad_norm=1.0,
     ):
         self.binary = binary
         self.latent_dim = latent_dim
@@ -23,6 +25,12 @@ class DPGAN:
         self.epochs = epochs
         self.delta = delta
         self.epsilon = epsilon
+        self._discriminator_lr = discriminator_lr
+        self._discriminator_decay = discriminator_decay
+        self._generator_lr = generator_lr
+        self._generator_decay = generator_decay
+        self._sigma = sigma
+        self._max_per_sample_grad_norm = max_per_sample_grad_norm
 
         self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
@@ -49,20 +57,28 @@ class DPGAN:
             self.device
         )
         discriminator = Discriminator(data.shape[1]).to(self.device)
-        optimizer_d = optim.Adam(discriminator.parameters(), lr=4e-4)
+        optimizer_d = optim.Adam(
+            discriminator.parameters(),
+            lr=self._discriminator_lr,
+            weight_decay=self._discriminator_decay
+        )
 
         privacy_engine = PrivacyEngine(
             discriminator,
             batch_size=self.batch_size,
             sample_size=len(data),
             alphas=[1 + x / 10.0 for x in range(1, 100)] + list(range(12, 64)),
-            noise_multiplier=3.5,
-            max_grad_norm=1.0,
+            noise_multiplier=self._sigma,
+            max_grad_norm=self._max_per_sample_grad_norm,
             clip_per_layer=True,
         )
 
         privacy_engine.attach(optimizer_d)
-        optimizer_g = optim.Adam(self.generator.parameters(), lr=1e-4)
+        optimizer_g = optim.Adam(
+            self.generator.parameters(),
+            lr=self._generator_lr,
+            weight_decay=self._generator_decay
+        )
 
         criterion = nn.BCELoss()
 
